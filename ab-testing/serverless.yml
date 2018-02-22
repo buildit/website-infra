@@ -1,0 +1,63 @@
+service: website-ab-testing
+
+provider:
+  name: aws
+  runtime: nodejs6.10
+  stage: beta
+  region: us-east-1 # To be used as Lambda@Edge functions must be in us-east-1
+
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "s3:ListBucket"
+      Resource: { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "ServerlessDeploymentBucket" } ] ]  }
+    - Effect: "Allow"
+      Action:
+        - "s3:PutObject"
+      Resource:
+        Fn::Join:
+          - ""
+          - - "arn:aws:s3:::"
+            - "Ref" : "ServerlessDeploymentBucket"
+            - "/*"
+    - Effect: "Allow"
+      Action: 
+        - "logs:CreateLogGroup"
+        - "logs:CreateLogStream"
+        - "logs:PutLogEvents"
+      Resource: "*"
+
+functions:
+  ViewerRequest:
+    handler:
+      src/viewerRequest.handler
+
+  OriginRequest:
+    handler:
+      src/originRequest.handler
+
+  OriginResponse:
+    handler:
+      src/originResponse.handler
+
+
+resources:
+  Outputs:
+    ViewerRequestFunctionArn:
+      Description: ViewerRequest function ARN
+      Value:
+        Ref: ViewerRequestLambdaFunction
+      Export:
+        Name: ${self:service}-${self:provider.stage}-ViewerRequestFunctionArn
+    OriginRequestFunctionArn:
+      Description: OriginRequest function ARN
+      Value:
+        Ref: OriginRequestLambdaFunction
+      Export:
+        Name: ${self:service}-${self:provider.stage}-OriginRequestFunctionArn
+    OriginResponseFunctionArn:
+      Description: OriginResponse function ARN
+      Value:
+        Ref: OriginResponseLambdaFunction
+      Export:
+        Name: ${self:service}-${self:provider.stage}-OriginResponseFunctionArn

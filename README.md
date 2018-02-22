@@ -8,6 +8,7 @@ To provision a website infrastructure you need:
 - A valid SSL certificate in ACM *Region us-east-1* for the custom domain. Certificates is loaded in any other reagion are not available to CloudFront
 - A custom DNS Zone hosted on Route53. The website DNS record will be added (may be a sub-domain or APEX)
 
+**TBD** Serverless requirements: Node, SLS...
 
 Scripts expect AWS CLI being configured, either with `aws configure` or setting  `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` env variables.
 
