@@ -1,0 +1,200 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: > 
+  Static Website infrastructure, single environment. 
+  CloudFront with S3 Origin, https only (redirect http to https).
+  Restricted access to S3 bucket.
+  CloudFront logging (optional). 
+  Creates a records on Route53.
+  REQUIRES A VALID CERTIFICATE LOADED IN ACM, us-east-1.
+  THIS STACK DOES NOT CREATE ANY DNS RECORD.
+
+
+Parameters:
+  SiteBucketName:
+    Type: String
+    Description: Name of the S3 bucket to be created for the website
+    AllowedPattern: '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
+
+  LogBucketName:
+    Type: String
+    Description: Name of the S3 bucket to be created for CloudFront logging (optional)
+    AllowedPattern: '^((([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9]))?$'
+    Default: ''
+
+  SiteExperimentBucketName:
+    Type: String
+    Description: Name of the S3 bucket to be created for A/B testing Experiment version (optional)
+    AllowedPattern: '^((([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9]))?$'
+    Default: ''    
+
+  WebsiteDnsName:
+    # No DNS record is set for the name, but the CDN will include it as possible CNAME
+    Type: String
+    Description: Website FQ DNS name, Must be in the DNS Zone specified by 'DnsZoneName'. May be the APEX of the Zone.
+    AllowedPattern: '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
+    
+  DnsZoneName:
+    Type: String
+    Description: Name of the DNS Zone (base domain name)
+    AllowedPattern: '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
+
+  CdnPriceClass:
+    Type: String
+    Description: CloudFront Price Class ('PriceClass_All', 'PriceClass_200' or 'PriceClass_100')
+    Default: "PriceClass_All"
+    AllowedValues:
+      - "PriceClass_100"
+      - "PriceClass_200"
+      - "PriceClass_All"
+
+  CertificateArn:
+    Type: String
+    Description: ACM Certificate ARM
+
+  # TODO Create Website Experiment bucket for A/B testing (optional)
+
+Conditions:
+  EnableCloudFrontLogging: !Not [ !Equals [ "", !Ref LogBucketName ] ]
+  SetUpABtesting: !Not [ !Equals [ "", !Ref SiteExperimentBucketName ] ]
+
+Resources:
+
+  SiteMainBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref SiteBucketName
+
+  LogBucket:
+    Type: AWS::S3::Bucket
+    Condition: EnableCloudFrontLogging
+    Properties:
+      BucketName: !Ref LogBucketName
+
+  SiteExperimentBucket:
+    Type: AWS::S3::Bucket
+    Condition: SetUpABtesting
+    Properties:
+      BucketName: !Ref SiteExperimentBucketName
+
+  SitMainBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteMainBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Sid: "2"
+          Effect: "Allow"
+          Principal:
+            CanonicalUser: !GetAtt DistributionOriginAccessIdentity.S3CanonicalUserId
+          Action: "s3:GetObject"
+          Resource: !Join [ '/', [ !GetAtt SiteMainBucket.Arn, '*' ] ]
+
+  SiteExperimentBuckletPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: SetUpABtesting
+    Properties:
+      Bucket: !Ref SiteExperimentBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Sid: "2"
+          Effect: "Allow"
+          Principal:
+            CanonicalUser: !GetAtt DistributionOriginAccessIdentity.S3CanonicalUserId
+          Action: "s3:GetObject"
+          Resource: !Join [ '/', [ !GetAtt SiteExperimentBucket.Arn, '*' ] ]    
+
+  CdnDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Ref AWS::StackName
+        Aliases:
+          - !Ref WebsiteDnsName
+        Enabled: 'true'
+        DefaultRootObject: index.html
+        PriceClass: !Ref CdnPriceClass
+        HttpVersion: http2
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateArn
+          SslSupportMethod: sni-only
+        Logging:
+          Fn::If:
+            - EnableCloudFrontLogging
+            - { Bucket: !GetAtt LogBucket.DomainName,  Prefix: cf } 
+            - !Ref AWS::NoValue
+        Origins:
+          - DomainName: !GetAtt SiteMainBucket.DomainName
+            Id: main
+            S3OriginConfig:
+              OriginAccessIdentity: !Join [ '/', [ "origin-access-identity/cloudfront", !Ref DistributionOriginAccessIdentity ] ]
+          - Fn::If:
+            - SetUpABtesting
+            - DomainName: !GetAtt SiteExperimentBucket.DomainName
+              Id: experiment
+              S3OriginConfig:
+                OriginAccessIdentity: !Join [ '/', [ "origin-access-identity/cloudfront", !Ref DistributionOriginAccessIdentity ] ]
+            - !Ref AWS::NoValue
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+          TargetOriginId: main
+          ForwardedValues:
+            QueryString: 'false'
+            Cookies:
+              Forward: none # Cookie forwarding will be enabled to turn on A/B testing
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: 'true'
+
+  DistributionOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub "Identity for ${AWS::StackName}"
+
+Outputs:
+  DistributionID:
+    Description: CloudFront Distribution ID
+    Value: !Ref CdnDistribution
+    Export:
+      Name: !Sub "${AWS::StackName}-DistributionID"
+
+  DistributionDomainName:
+    Description: DNS name of CloudFront Distribution
+    Value: !GetAtt CdnDistribution.DomainName
+    Export:
+      Name: !Sub "${AWS::StackName}-DistributionDomainName"
+  
+  WebsiteDnsName:
+    Description: FQ DNS name of the website
+    Value: !Ref WebsiteDnsName
+    Export:
+      Name: !Sub "${AWS::StackName}-WebsiteDnsName"
+
+  ZoneName:
+    Description: Name of the DNS Zone (base domain)
+    Value: !Ref DnsZoneName
+    Export:
+      Name: !Sub "${AWS::StackName}-ZoneName"
+
+  WebsiteMainBucket:
+    Description: Bucket for the website (main version)
+    Value: !GetAtt SiteMainBucket.DomainName
+    Export:
+      Name: !Sub "${AWS::StackName}-WebsiteMainBucket"    
+
+  WebsiteExperimentBucket:
+    Description: Bucket for the Experiment website (for A/B testing)
+    Value: !GetAtt SiteExperimentBucket.DomainName
+    Condition: SetUpABtesting
+    Export:
+      Name: !Sub "${AWS::StackName}-WebsiteExperimentBucket"    
+
+  CloudFrontLogBucket:
+    Description: Bucket for CloudFront logging
+    Value: !GetAtt LogBucket.DomainName
+    Condition: EnableCloudFrontLogging
+    Export:
+      Name: !Sub "${AWS::StackName}-CloudFrontLogBucket"    
