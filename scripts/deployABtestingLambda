@@ -1,0 +1,15 @@
+# Generate data file for generating lambda code
+# This creates/update the lambda stack (on us-east-1)
+
+# Build and deploy lambda functions for A/B testing
+cd $DIR/ab-testing
+npm install
+
+# Generate data file for generating lambda code
+echo "Generating Lambda function code"
+echo "{ \"experimentBucketName\" : \"${AB_EXPERIMENT_BUCKET}\", \"experimentBucketRegion\" : \"${RESOURCES_REGION}\" }" > $DIR/ab-testing/build/data.json
+npm run build
+
+echo "Deploy Lambda function"
+sls deploy --stage $ENV_NAME
+cd -

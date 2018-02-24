@@ -1,29 +1,29 @@
 #!/bin/bash
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-source $DIR/scripts/functions.sh
+source $DIR/scripts/functions
 
 loadConfig $1
 
 CF_TEMPLATE=file://$DIR/cloudformation/website-infra.yml
-STACK_NAME="${ENV_NAME}-infra"
+STACK_NAME=$( infraStackName $ENV_NAME )
 
 # Infra stack must exist
 failIfStackDoesNotExist $STACK_NAME $RESOURCES_REGION
 
 # Check whether making A/B testing available
 if [ -z "$AB_EXPERIMENT_BUCKET" ]; then
-  echo "No A/B testing abailable"
+  echo "No A/B testing abailable!"
   exit 1
 fi
 
 # Check whether enabling CloudFront logging
 if [ -z "$LOGS_BUCKET" ]; then
   PARAM_LOGS=""
-  echo "No CloudFormation logging"
+  echo "- No CloudFormation logging"
 else
   PARAM_LOGS="ParameterKey=LogBucketName,ParameterValue=${LOGS_BUCKET}"
-  echo "CloudFormatiomn logging enabled"
+  echo "- CloudFormatiomn logging enabled"
 fi
 
 # Update infra stack
@@ -40,8 +40,9 @@ aws cloudformation update-stack --output text \
         ParameterKey=DnsZoneName,ParameterValue=$WEBSITE_DOMAIN \
         ParameterKey=CertificateArn,ParameterValue=$CERTIFICATE_ARN \
         ParameterKey=CdnPriceClass,ParameterValue=$CDN_PRICE_CLASS
+    #  Not passing ABtestingOriginRequestFunctionArn: detach A/B testing lambda function
 if [ $? -ne 0 ]; then
-    echo "Failed update-stack of $STACK_NAME stack"
+    showCloudformationFailureMessage 'update-stack' $STACK_NAME
     exit 1
 fi
 
@@ -51,7 +52,13 @@ waitCloudFormation $STACK_NAME $RESOURCES_REGION stack-update-complete "it may t
 STACK_STATUS=$( getStackStatus $STACK_NAME $RESOURCES_REGION )
 echo "Stack Status: $STACK_STATUS"
 
+# Invalidate Distribution
+echo "Invalidate CloudFront Distribution cache"
+DISTRIBUTION_ID=$( getStackExport $STACK_NAME $RESOURCES_REGION 'DistributionID' )
+INVALIDATION_ID=$( createCloudfrontInvalidation $DISTRIBUTION_ID )
+waitForInvalidationCompleted $DISTRIBUTION_ID $INVALIDATION_ID
+
 # Show stack outputs
-getStackOutput $STACK_NAME $RESOURCES_REGION
+showStackOutputs $STACK_NAME $RESOURCES_REGION
 
 # Note: Lambda stack cannot be removed immediately after being detached from CloudFront: the replica takes a while to be removed

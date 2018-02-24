@@ -1,4 +1,4 @@
-service: ab-testing
+service: website-lambda
 
 provider:
   name: aws
@@ -14,29 +14,15 @@ package:
   individually: true
   exclude: 
     - src/**
-    - build/*.json
+    - build/**
 
 functions:
-  ViewerRequest:
-    handler:
-      build/viewerRequest.handler
-    package:
-      include:
-        - build/viewerRequest.js
-
   OriginRequest:
     handler:
       build/originRequest.handler
     package:
       include:
         - build/originRequest.js      
-
-  OriginResponse:
-    handler:
-      build/originResponse.handler
-    package:
-      include:
-        - build/originResponse.js   
 
 resources:
   Resources:
@@ -61,15 +47,7 @@ resources:
     # No way of directly referencing Outputs from this stack from the website-infra stack
     # unless the website is deployed on us-east-1. 
     # CloudFormation does not support ImportValue from different Regions
-    ViewerRequestFunctionArn:
-      Description: ViewerRequest function ARN
-      Value:
-        Ref: ViewerRequestLambdaFunction
     OriginRequestFunctionArn:
       Description: OriginRequest function ARN
       Value:
         Ref: OriginRequestLambdaFunction
-    OriginResponseFunctionArn:
-      Description: OriginResponse function ARN
-      Value:
-        Ref: OriginResponseLambdaFunction

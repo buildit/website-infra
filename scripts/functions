@@ -1,0 +1,138 @@
+# Common functions
+
+function loadConfig {
+    CFG_FILE=$1
+
+    if [ -z "$CFG_FILE" ] || [ -f "$CFG_FILE" ] ; then
+        echo "Load config from $CFG_FILE"
+        source $CFG_FILE
+    else
+        echo "Cannot find configuration file"
+        ME=`basename "$0"`
+        echo "usage:"
+        echo "  $ME <environment-cfg-file>"
+        
+        exit 1
+    fi
+}
+
+
+function infraStackName {
+    local ENVIRONMENT_NAME=$1
+    echo "website-infra-${ENVIRONMENT_NAME}"
+}
+
+function dnsStackName {
+    local ENVIRONMENT_NAME=$1
+    echo "website-dns-${ENVIRONMENT_NAME}"
+}
+
+function abTestingLambdaStackName {
+    local ENVIRONMENT_NAME=$1
+    echo "website-lambda-${ENVIRONMENT_NAME}"
+}
+
+function waitCloudFormation {
+    local STACK=$1
+    local REGION=$2
+    local WAIT_CMD=$3
+    local HOW_LONG=$4
+
+    echo "Waiting until CloudFormation $WAIT_CMD on $STACK... $HOW_LONG"
+    aws cloudformation wait $WAIT_CMD --stack-name $STACK --region $REGION --no-paginate
+    echo "...done"
+}
+
+function waitStackExists {
+    local STACK=$1
+    local REGION=$2
+
+    echo "Checking if stack $STACK exists in $REGION"
+    aws cloudformation  wait stack-exists --stack-name $STACK --region $REGION  > /dev/null 2>&1 
+    if [ $? -ne 0 ]; then
+        echo "Cannot find CloudFormation stack $STACK in Region $REGION" 
+        exit 1
+    else
+        echo "CloudFormation stack $STACK found in Region $REGION"
+    fi    
+}
+
+function checkIfStackExists {
+    local STACK=$1
+    local REGION=$2
+    aws cloudformation describe-stacks --stack-name $STACK --region $REGION > /dev/null 2>&1 
+}
+
+function failIfCertificateDoesNotExistInUsEast1 {
+    local CERT_ARN=$1
+
+    aws acm describe-certificate --certificate-arn $CERT_ARN --region us-east-1  > /dev/null 2>&1 
+    if [ $? -ne 0 ]; then
+        echo "Certificate $CERT_ARN must exist Region us-east-1" 
+        exit 1
+    fi    
+}
+
+function failIfStackDoesNotExist {
+    local STACK=$1
+    local REGION=$2
+
+    aws cloudformation describe-stacks --stack-name $STACK --region $REGION > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "CloudFormation stack $STACK does not exist in $REGION"
+        exit 1
+    fi    
+}
+
+function getStackStatus {
+    local STACK=$1
+    local REGION=$2
+    aws cloudformation describe-stacks --stack-name $STACK --region $REGION \
+        --query 'Stacks[0].StackStatus' \
+        --output text
+}
+
+function showStackOutputs {
+    local STACK=$1
+    local REGION=$2
+    aws cloudformation describe-stacks --stack-name $STACK --region $REGION \
+        --query 'Stacks[0].Outputs[*].{Output:OutputKey,Value:OutputValue}' \
+        --output table
+}
+
+function getStackExport {
+    local STACK=$1
+    local REGION=$2
+    local OUTPUT_KEY=$3
+    aws cloudformation describe-stacks --stack-name $STACK --region $REGION  \
+        --query "Stacks[0].Outputs[?OutputKey=='${OUTPUT_KEY}'].OutputValue" \
+        --output text    
+}
+
+function createCloudfrontInvalidation {
+    local DISTRIBUTION_ID=$1
+    aws cloudfront create-invalidation \
+        --distribution-id $DISTRIBUTION_ID --paths '/*' \
+        --query 'Invalidation.Id' --output text
+}
+
+function waitForInvalidationCompleted {
+    local DISTRIBUTION_ID=$1
+    local INVALIDATION_ID=$2
+    echo "Wait until Invalidation $INVALIDATION_ID of Distribution $DISTRIBUTION_ID is completed..."
+    aws cloudfront wait invalidation-completed \
+        --distribution-id $DISTRIBUTION_ID --id $INVALIDATION_ID  
+}
+
+function showCloudformationFailureMessage {
+    local $CF_CMD=$1
+    local $STACK=$2
+    echo "Failed $CF_CMD of $STACK stack"
+    # ...facepalm
+    echo "*********************************************************************************************"
+    echo "If the stack is stuck in ROLLBACK_FAILED status you must remove it before retrying (facepalm)"
+    echo ""
+    echo "'Validation Error... No updates are to be performed', just means 'No update required'"
+    echo "*********************************************************************************************"    
+    exit 1    
+}

@@ -32,3 +32,20 @@ Resources:
           { "Fn::Join" : [ '', 
             [ { "Fn::ImportValue" : { "Fn::Sub": "${WebsiteInfraStackName}-DistributionDomainName" } }, '.' ]
           ] }
+
+Outputs:
+  DnsZoneName:
+    Description: 'DNS Zone'
+    Value: 
+      Fn::ImportValue:
+        !Sub "${WebsiteInfraStackName}-ZoneName"
+    Export:
+      Name: !Sub "${AWS::StackName}-ZoneName"
+
+  WebsiteDnsNamer:
+    Description: 'Website FQ DNS name'
+    Value: 
+      Fn::ImportValue:
+        !Sub "${WebsiteInfraStackName}-WebsiteDnsName"
+    Export:
+      Name: !Sub "${AWS::StackName}-WebsiteDnsName"    

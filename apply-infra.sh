@@ -1,7 +1,7 @@
 #!/bin/bash
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-source $DIR/scripts/functions.sh
+source $DIR/scripts/functions
 
 loadConfig $1
 
@@ -27,23 +27,23 @@ fi
 # Check whether making A/B testing available
 if [ -z "$AB_EXPERIMENT_BUCKET" ]; then
   PARAM_EXPERIMENT=""
-  echo "No A/B testing"
+  echo "- No A/B testing"
 else
   PARAM_EXPERIMENT="ParameterKey=SiteExperimentBucketName,ParameterValue=${AB_EXPERIMENT_BUCKET}"
-  echo "A/B will be available"  
+  echo "- A/B will be available"  
 fi
 
 # Check whether enabling CloudFront logging
 if [ -z "$LOGS_BUCKET" ]; then
   PARAM_LOGS=""
-  echo "No CloudFormation logging"
+  echo "- No CloudFormation logging"
 else
   PARAM_LOGS="ParameterKey=LogBucketName,ParameterValue=${LOGS_BUCKET}"
-  echo "CloudFormatiomn logging enabled"
+  echo "- CloudFormatiomn logging enabled"
 fi
 
-# Create/update infra stack 
-# WITHOUT A/B TESTING LAMBDA FUNCTIONS
+# Create or update infra stack
+# (Experiment bucket and Log bucket are optional)
 aws cloudformation $CF_CMD --output text \
     --stack-name $STACK_NAME  \
     --template-body $CF_TEMPLATE \
@@ -56,12 +56,9 @@ aws cloudformation $CF_CMD --output text \
         ParameterKey=DnsZoneName,ParameterValue=$WEBSITE_DOMAIN \
         ParameterKey=CertificateArn,ParameterValue=$CERTIFICATE_ARN \
         ParameterKey=CdnPriceClass,ParameterValue=$CDN_PRICE_CLASS
+    # Not passing ABtestingOriginRequestFunctionArn: A/B switch lambda cannot be attached at this point
 if [ $? -ne 0 ]; then
-    echo "Failed $CF_CMD of $STACK_NAME stack"
-    # If the stack exists and is in ROLLBACK_COMPLETE you must delete the stack before retry
-    echo "************************************************************************************"
-    echo "If the stack is stuck in ROLLBACK_COMPLETE status you must remove it before retrying"
-    echo "************************************************************************************"    
+    showCloudformationFailureMessage $CF_CMD $STACK_NAME
     exit 1
 fi 
 
@@ -76,4 +73,4 @@ STACK_STATUS=$( getStackStatus $STACK_NAME $RESOURCES_REGION )
 echo "Stack Status: $STACK_STATUS"
 
 # Show stack outputs
-getStackOutput $STACK_NAME $RESOURCES_REGION
+showStackOutputs $STACK_NAME $RESOURCES_REGION

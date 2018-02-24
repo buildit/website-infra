@@ -181,12 +181,8 @@ Resources:
           LambdaFunctionAssociations:
             Fn::If:
               - EnableABtesting
-              - - EventType: viewer-request
-                  LambdaFunctionARN: !Ref ABtestingViewerRequestFunctionArn
-                - EventType: origin-request
+              - - EventType: origin-request
                   LambdaFunctionARN: !Ref ABtestingOriginRequestFunctionArn
-                - EventType: origin-response
-                  LambdaFunctionARN: !Ref ABtestingOriginResponseFunctionArn
               - !Ref AWS::NoValue
 
   DistributionOriginAccessIdentity:
