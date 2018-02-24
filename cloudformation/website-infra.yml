@@ -21,12 +21,6 @@ Parameters:
     AllowedPattern: '^((([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9]))?$'
     Default: ''
 
-  SiteExperimentBucketName:
-    Type: String
-    Description: Name of the S3 bucket to be created for A/B testing Experiment version (optional)
-    AllowedPattern: '^((([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9]))?$'
-    Default: ''    
-
   WebsiteDnsName:
     # No DNS record is set for the name, but the CDN will include it as possible CNAME
     Type: String
@@ -49,13 +43,41 @@ Parameters:
 
   CertificateArn:
     Type: String
-    Description: ACM Certificate ARM
+    Description: ACM Certificate ARM      
 
-  # TODO Create Website Experiment bucket for A/B testing (optional)
+  ## A/B testing related parameters
+  SiteExperimentBucketName:
+    Type: String
+    Description: Name of the S3 bucket to be created for A/B testing Experiment version (optional)
+    AllowedPattern: '^((([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9]))?$'
+    Default: ''    
+
+  ABtestingOriginRequestFunctionArn:
+    Type: String
+    Description: ARN of the Lambda function to be attached as Origin Request, for A/B testing (optional; if defined enables A/B testing)
+    Default: ''
+
+  ABtestingViewerRequestFunctionArn:
+    Type: String
+    Description: ARN of the Lambda function to be attached as Viewer Request, for A/B testing (optional; mandatory if A/B testing is enabled)
+    Default: ''
+ 
+  ABtestingOriginResponseFunctionArn:
+    Type: String
+    Description: ARN of the Lambda function to be attached as Origin Response, for A/B testing (optional; mandatory if A/B testing is enabled)
+    Default: ''
+    
+
+  ABTestingCookie:
+    Type: String
+    Description: "Name of the cookie used for A/B testing (default: 'X-Source')"
+    Default: 'X-Source'
+
 
 Conditions:
   EnableCloudFrontLogging: !Not [ !Equals [ "", !Ref LogBucketName ] ]
   SetUpABtesting: !Not [ !Equals [ "", !Ref SiteExperimentBucketName ] ]
+  EnableABtesting: !Not [ !Equals [ "", !Ref ABtestingOriginRequestFunctionArn ] ]
 
 Resources:
 
@@ -144,9 +166,28 @@ Resources:
           ForwardedValues:
             QueryString: 'false'
             Cookies:
-              Forward: none # Cookie forwarding will be enabled to turn on A/B testing
+              Forward: 
+                Fn::If:
+                  - EnableABtesting
+                  - whitelist
+                  - none
+              WhitelistedNames:
+                Fn::If:
+                  - EnableABtesting
+                  - [ !Ref ABTestingCookie ]
+                  - !Ref AWS::NoValue
           ViewerProtocolPolicy: redirect-to-https
           Compress: 'true'
+          LambdaFunctionAssociations:
+            Fn::If:
+              - EnableABtesting
+              - - EventType: viewer-request
+                  LambdaFunctionARN: !Ref ABtestingViewerRequestFunctionArn
+                - EventType: origin-request
+                  LambdaFunctionARN: !Ref ABtestingOriginRequestFunctionArn
+                - EventType: origin-response
+                  LambdaFunctionARN: !Ref ABtestingOriginResponseFunctionArn
+              - !Ref AWS::NoValue
 
   DistributionOriginAccessIdentity:
     Type: AWS::CloudFront::CloudFrontOriginAccessIdentity

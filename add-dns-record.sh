@@ -2,15 +2,14 @@
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-source $DIR/scripts/functions
+source $DIR/scripts/functions.sh
 loadConfig $1
 
 CF_TEMPLATE=file://$DIR/cloudformation/website-dns-record.yml
-STACK_NAME="${ENV_NAME}-dns"
-INFRA_STACK_NAME="${ENV_NAME}-infra"
+STACK_NAME=$( dnsStackName $ENV_NAME ) 
+INFRA_STACK_NAME=$( infraStackName $ENV_NAME ) 
 
-
-# Check if the infra stack exists
+# Infra stack must exist
 failIfStackDoesNotExist $INFRA_STACK_NAME $RESOURCES_REGION
 
 # Decide whether creating or updating the stack
@@ -32,13 +31,21 @@ aws cloudformation $CF_CMD  --output text \
     --template-body $CF_TEMPLATE \
     --parameters \
         ParameterKey=WebsiteInfraStackName,ParameterValue=$INFRA_STACK_NAME
-
-exitOnFailure "sending $CF_CMD command"
+if [ $? -ne 0 ]; then
+    echo "Failed $CF_CMD of $STACK_NAME stack"
+    echo "************************************************************************************"
+    echo "If the stack is stuck in ROLLBACK_COMPLETE status you must remove it before retrying"
+    echo "************************************************************************************"        
+    exit 1
+fi 
 
 # Wait before stack exists
 waitStackExists $STACK_NAME $RESOURCES_REGION
 
 # Wait until stack create/update is complete
-waitCloudFormation $STACK_NAME $RESOURCES_REGION $WAIT_CMD "may take few minutes"
+waitCloudFormation $STACK_NAME $RESOURCES_REGION $WAIT_CMD "it may take few minutes"
 
-# TODO Show stack outputs
+STACK_STATUS=$( getStackStatus $STACK_NAME $RESOURCES_REGION )
+echo "Stack Status: $STACK_STATUS"
+
+getStackOutput $STACK_NAME $RESOURCES_REGION

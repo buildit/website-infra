@@ -1,19 +1,16 @@
 #!/bin/bash
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-source $DIR/scripts/functions
+source $DIR/scripts/functions.sh
 
 loadConfig $1
 
 CF_TEMPLATE=file://$DIR/cloudformation/website-infra.yml
-STACK_NAME="${ENV_NAME}-infra"
+STACK_NAME=$( infraStackName $ENV_NAME ) 
 
 # Check if the Certificate ARN exists in us-east-1 (!)
-aws acm describe-certificate --certificate-arn $CERTIFICATE_ARN --region us-east-1  > /dev/null 2>&1 
-if [ $? -ne 0 ]; then
-  echo "Certificarte $CERTIFICATE_ARN must exist Region us-east-1" 
-  exit 1
-fi
+failIfCertificateDoesNotExistInUsEast1 $CERTIFICATE_ARN
+
 
 # Decide whether creating or updating the stack
 checkIfStackExists $STACK_NAME $RESOURCES_REGION
@@ -33,7 +30,7 @@ if [ -z "$AB_EXPERIMENT_BUCKET" ]; then
   echo "No A/B testing"
 else
   PARAM_EXPERIMENT="ParameterKey=SiteExperimentBucketName,ParameterValue=${AB_EXPERIMENT_BUCKET}"
-  echo "A/B available"  
+  echo "A/B will be available"  
 fi
 
 # Check whether enabling CloudFront logging
@@ -45,7 +42,8 @@ else
   echo "CloudFormatiomn logging enabled"
 fi
 
-# Send template to CloudFront
+# Create/update infra stack 
+# WITHOUT A/B TESTING LAMBDA FUNCTIONS
 aws cloudformation $CF_CMD --output text \
     --stack-name $STACK_NAME  \
     --template-body $CF_TEMPLATE \
@@ -58,14 +56,24 @@ aws cloudformation $CF_CMD --output text \
         ParameterKey=DnsZoneName,ParameterValue=$WEBSITE_DOMAIN \
         ParameterKey=CertificateArn,ParameterValue=$CERTIFICATE_ARN \
         ParameterKey=CdnPriceClass,ParameterValue=$CDN_PRICE_CLASS
-
-exitOnFailure "sending $CF_CMD command"
+if [ $? -ne 0 ]; then
+    echo "Failed $CF_CMD of $STACK_NAME stack"
+    # If the stack exists and is in ROLLBACK_COMPLETE you must delete the stack before retry
+    echo "************************************************************************************"
+    echo "If the stack is stuck in ROLLBACK_COMPLETE status you must remove it before retrying"
+    echo "************************************************************************************"    
+    exit 1
+fi 
 
 # Wait before stack exists
 waitStackExists $STACK_NAME $RESOURCES_REGION
 
 # Wait until stack create/update is complete
-waitCloudFormation $STACK_NAME $RESOURCES_REGION $WAIT_CMD "may take tenths of minutes"
+waitCloudFormation $STACK_NAME $RESOURCES_REGION $WAIT_CMD "it may take tenths of minutes"
+
+
+STACK_STATUS=$( getStackStatus $STACK_NAME $RESOURCES_REGION )
+echo "Stack Status: $STACK_STATUS"
 
 # Show stack outputs
-showStackOutput $STACK_NAME $RESOURCES_REGION
+getStackOutput $STACK_NAME $RESOURCES_REGION

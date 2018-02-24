@@ -1,63 +1,75 @@
-service: website-ab-testing
+service: ab-testing
 
 provider:
   name: aws
   runtime: nodejs6.10
-  stage: beta
+  stage: ${opt:stage, 'noenv'} # Stage is named after the Website environment name
   region: us-east-1 # To be used as Lambda@Edge functions must be in us-east-1
+  logRetentionInDays: 7
+  role: lambaEdgeExecutionRole
+  timeout: 1
+  memorySize: 128
 
-  iamRoleStatements:
-    - Effect: "Allow"
-      Action:
-        - "s3:ListBucket"
-      Resource: { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "ServerlessDeploymentBucket" } ] ]  }
-    - Effect: "Allow"
-      Action:
-        - "s3:PutObject"
-      Resource:
-        Fn::Join:
-          - ""
-          - - "arn:aws:s3:::"
-            - "Ref" : "ServerlessDeploymentBucket"
-            - "/*"
-    - Effect: "Allow"
-      Action: 
-        - "logs:CreateLogGroup"
-        - "logs:CreateLogStream"
-        - "logs:PutLogEvents"
-      Resource: "*"
+package:
+  individually: true
+  exclude: 
+    - src/**
+    - build/*.json
 
 functions:
   ViewerRequest:
     handler:
-      src/viewerRequest.handler
+      build/viewerRequest.handler
+    package:
+      include:
+        - build/viewerRequest.js
 
   OriginRequest:
     handler:
-      src/originRequest.handler
+      build/originRequest.handler
+    package:
+      include:
+        - build/originRequest.js      
 
   OriginResponse:
     handler:
-      src/originResponse.handler
-
+      build/originResponse.handler
+    package:
+      include:
+        - build/originResponse.js   
 
 resources:
+  Resources:
+    lambaEdgeExecutionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: LambdaAtEdgeExecutionRole
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+                  - edgelambda.amazonaws.com
+              Action: sts:AssumeRole
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+
   Outputs:
+    # No way of directly referencing Outputs from this stack from the website-infra stack
+    # unless the website is deployed on us-east-1. 
+    # CloudFormation does not support ImportValue from different Regions
     ViewerRequestFunctionArn:
       Description: ViewerRequest function ARN
       Value:
         Ref: ViewerRequestLambdaFunction
-      Export:
-        Name: ${self:service}-${self:provider.stage}-ViewerRequestFunctionArn
     OriginRequestFunctionArn:
       Description: OriginRequest function ARN
       Value:
         Ref: OriginRequestLambdaFunction
-      Export:
-        Name: ${self:service}-${self:provider.stage}-OriginRequestFunctionArn
     OriginResponseFunctionArn:
       Description: OriginResponse function ARN
       Value:
         Ref: OriginResponseLambdaFunction
-      Export:
-        Name: ${self:service}-${self:provider.stage}-OriginResponseFunctionArn

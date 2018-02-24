@@ -1,7 +1,7 @@
 #!/bin/bash
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-source $DIR/scripts/functions
+source $DIR/scripts/functions.sh
 
 loadConfig $1
 

@@ -3,8 +3,8 @@
 const sourceCoookie = 'X-Source';
 const sourceMain = 'main';
 const sourceExperiment = 'experiment';
-
-const experimentBucketName = 'my-experiment.s3.amazonaws.com';
+ 
+const experimentBucket = '{{ experimentBucket }}.s3.amazonaws.com';
 const experimentBucketRegion = 'eu-west-1';
 
 // Origin Request handler
@@ -27,14 +27,14 @@ exports.handler = (event, context, callback) => {
         request.origin = {
             s3: {
                 authMethod: 'origin-access-identity',
-                domainName: experimentBucketName,
+                domainName: experimentBucket,
                 path: '',
                 region: experimentBucketRegion    
             }
         };
 
         // Also set Host header to prevent “The request signature we calculated does not match the signature you provided” error
-        headers['host'] = [{key: 'host', value: experimentBucketName }];
+        headers['host'] = [{key: 'host', value: experimentBucket }];
     }
     // No need to change anything if Source was Main or undefined
     

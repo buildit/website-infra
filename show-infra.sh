@@ -1,11 +1,11 @@
 #!/bin/bash
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-source $DIR/scripts/functions
+source $DIR/scripts/functions.sh
 
 loadConfig $1
 
-STACK_NAME="${ENV_NAME}-infra"
+STACK_NAME=$( infraStackName $ENV_NAME ) 
 
 # Show stack outputs
-showStackOutput $STACK_NAME $RESOURCES_REGION
+getStackOutput $STACK_NAME $RESOURCES_REGION

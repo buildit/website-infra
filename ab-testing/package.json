@@ -1,0 +1,14 @@
+{
+  "name": "ab-testing",
+  "version": "1.0.0",
+  "description": "Lambda functions to be used as Lambda@Edge for A/B testing",
+  "main": "index.js",
+  "scripts": {
+    "build": "mustache build/data.json src/viewerRequest.mustache > build/viewerRequest.js && mustache build/data.json src/originRequest.mustache > build/originRequest.js && mustache build/data.json src/originResponse.mustache > build/originResponse.js"
+  },
+  "author": "Lorenzo Nicora <lorenzo.nicora@gmail.com>",
+  "license": "ISC",
+  "devDependencies": {
+    "mustache": "^2.3.0"
+  }
+}
