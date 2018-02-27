@@ -128,12 +128,6 @@ function showCloudformationFailureMessage {
     local $CF_CMD=$1
     local $STACK=$2
     echo "Failed $CF_CMD of $STACK stack"
-    # ...facepalm
-    echo "*********************************************************************************************"
-    echo "If the stack is stuck in ROLLBACK_FAILED or ROLLBACK_COMPLETE status "
-    echo "   you must remove it before retrying"
-    echo ""
-    echo "'Validation Error... No updates are to be performed', just means 'No update required'"
-    echo "*********************************************************************************************"    
-    exit 1    
+    echo "** If the stack get stuck in ROLLBACK_FAILED or ROLLBACK_COMPLETE status you must remove it before retrying."
+    echo "** Also, 'Validation Error... No updates are to be performed', means 'No update required'."
 }
