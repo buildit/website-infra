@@ -45,7 +45,8 @@ The AWS Region is defined in the environment configuration file (see below). Any
     - A valid SSL certificate is required for https on the custom domain
 - Optionaly, creates a second *experiment* Origin for A/B testing
 - A S3 bucket hosts website content (*main*)
-    - CloudFront uses "S3 Origin" (as opposed to "Custom Origin"), so S3 Bucket Website Hosting is not used and the bucket is not directly accessible
+    - Static Website Hosting is on
+    - CloudFront uses "Custom Origin" (as opposed to "S3 Origin") to access the bucket
 - A second, optional S3 bucket for *experiment* website, if you plan to use A/B testing
     - When A/B testing is not enabled the content of this bucket is ignored
 - Another optional S3 bucket for CloudFront logs
@@ -97,9 +98,11 @@ S3 bucket names must be globally unique across AWS.
 
 ## Scripts
 
-All commands expects the path to a valid environment configuration file as single parameter:
+All commands expects the path to a valid environment configuration file as single parameter: `<command> <path-to-conf-file>`
+
+e.g.
 ```
-$ <command> <path-to-conf-file>
+$ ./apply-infra.sh config/justatest.conf
 ```
 
 Some of the scripts take a while to complete (30-60 mins), as they modify CDN configuration and wait for the change to propagate (unfortunately, AWS CLI provides no simple way of showing whether it is waiting or is dead. So commands freeze until completed or failed).

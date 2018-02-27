@@ -100,7 +100,7 @@ function showStackOutputs {
         --output table
 }
 
-function getStackExport {
+function getStackOutput {
     local STACK=$1
     local REGION=$2
     local OUTPUT_KEY=$3
@@ -130,7 +130,8 @@ function showCloudformationFailureMessage {
     echo "Failed $CF_CMD of $STACK stack"
     # ...facepalm
     echo "*********************************************************************************************"
-    echo "If the stack is stuck in ROLLBACK_FAILED status you must remove it before retrying (facepalm)"
+    echo "If the stack is stuck in ROLLBACK_FAILED or ROLLBACK_COMPLETE status "
+    echo "   you must remove it before retrying"
     echo ""
     echo "'Validation Error... No updates are to be performed', just means 'No update required'"
     echo "*********************************************************************************************"    

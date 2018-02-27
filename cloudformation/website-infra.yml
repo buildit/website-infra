@@ -73,6 +73,27 @@ Parameters:
     Description: "Name of the cookie used for A/B testing (default: 'X-Source')"
     Default: 'X-Source'
 
+Mappings:
+  # This mapping is required for the inconsistent naming of S3 Static Website Endpoints across Regions
+  RegionToS3Domain:
+    us-east-1:
+      domain: "s3-website-us-east-1.amazonaws.com"
+    us-east-2:
+      domain: "s3-website.us-east-2.amazonaws.com"
+    us-west-1:
+      domain: "s3-website-us-west-1.amazonaws.com"
+    us-west-2:
+      domain: "s3-website-us-west-2.amazonaws.com"
+    eu-west-1:
+      domain: "s3-website-eu-west-1.amazonaws.com"
+    eu-west-2:
+      domain: "s3-website.eu-west-2.amazonaws.com"
+    eu-west-3:
+      domain: "s3-website.eu-west-3.amazonaws.com"
+    eu-central-1:
+      domain: "s3-website.eu-central-1.amazonaws.com"
+    #...add more Region if required
+
 
 Conditions:
   EnableCloudFrontLogging: !Not [ !Equals [ "", !Ref LogBucketName ] ]
@@ -85,18 +106,22 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Ref SiteBucketName
-
-  LogBucket:
-    Type: AWS::S3::Bucket
-    Condition: EnableCloudFrontLogging
-    Properties:
-      BucketName: !Ref LogBucketName
+      WebsiteConfiguration:
+        IndexDocument: index.html
 
   SiteExperimentBucket:
     Type: AWS::S3::Bucket
     Condition: SetUpABtesting
     Properties:
       BucketName: !Ref SiteExperimentBucketName
+      WebsiteConfiguration:
+        IndexDocument: index.html
+
+  LogBucket:
+    Type: AWS::S3::Bucket
+    Condition: EnableCloudFrontLogging
+    Properties:
+      BucketName: !Ref LogBucketName
 
   SitMainBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -105,10 +130,12 @@ Resources:
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
-          Sid: "2"
+          Sid: "1"
           Effect: "Allow"
-          Principal:
-            CanonicalUser: !GetAtt DistributionOriginAccessIdentity.S3CanonicalUserId
+          Principal: "*" # Custom Origin only. Comment out if using S3 Origin
+          # # Uncomment if CloudFront Distribution is using S3 Origin
+          # Principal:
+          #   CanonicalUser: !GetAtt DistributionOriginAccessIdentity.S3CanonicalUserId
           Action: "s3:GetObject"
           Resource: !Join [ '/', [ !GetAtt SiteMainBucket.Arn, '*' ] ]
 
@@ -120,10 +147,12 @@ Resources:
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
-          Sid: "2"
+          Sid: "1"
           Effect: "Allow"
-          Principal:
-            CanonicalUser: !GetAtt DistributionOriginAccessIdentity.S3CanonicalUserId
+          Principal: "*" # Custom Origin only. Comment out if using S3 Origin
+          # # Uncomment if CloudFront Distribution is using S3 Origin
+          # Principal:
+          #   CanonicalUser: !GetAtt DistributionOriginAccessIdentity.S3CanonicalUserId  
           Action: "s3:GetObject"
           Resource: !Join [ '/', [ !GetAtt SiteExperimentBucket.Arn, '*' ] ]    
 
@@ -147,17 +176,36 @@ Resources:
             - { Bucket: !GetAtt LogBucket.DomainName,  Prefix: cf } 
             - !Ref AWS::NoValue
         Origins:
-          - DomainName: !GetAtt SiteMainBucket.DomainName
+          # Custom Origin mode. Comment out if using S3 Origin
+          - DomainName: !Join [ '.', [ !Ref SiteMainBucket, !FindInMap [ RegionToS3Domain, !Ref "AWS::Region", domain ] ]]
             Id: main
-            S3OriginConfig:
-              OriginAccessIdentity: !Join [ '/', [ "origin-access-identity/cloudfront", !Ref DistributionOriginAccessIdentity ] ]
+            CustomOriginConfig:
+              HTTPPort: '80'
+              HTTPSPort: '443'
+              OriginProtocolPolicy: http-only
           - Fn::If:
             - SetUpABtesting
-            - DomainName: !GetAtt SiteExperimentBucket.DomainName
+            - DomainName: !Join [ '.', [ !Ref SiteExperimentBucket, !FindInMap [ RegionToS3Domain, !Ref "AWS::Region", domain ] ]]
               Id: experiment
-              S3OriginConfig:
-                OriginAccessIdentity: !Join [ '/', [ "origin-access-identity/cloudfront", !Ref DistributionOriginAccessIdentity ] ]
+              CustomOriginConfig:
+                HTTPPort: '80'
+                HTTPSPort: '443'
+                OriginProtocolPolicy: http-only
             - !Ref AWS::NoValue
+
+          # # S3 Origin. Uncomment if using S3 Origin mode
+          # - DomainName: !GetAtt SiteMainBucket.DomainName
+          #   Id: main
+          #   S3OriginConfig:
+          #     OriginAccessIdentity: !Join [ '/', [ "origin-access-identity/cloudfront", !Ref DistributionOriginAccessIdentity ] ]
+          # - Fn::If:
+          #   - SetUpABtesting
+          #   - DomainName: !GetAtt SiteExperimentBucket.DomainName
+          #     Id: experiment
+          #     S3OriginConfig:
+          #       OriginAccessIdentity: !Join [ '/', [ "origin-access-identity/cloudfront", !Ref DistributionOriginAccessIdentity ] ]
+          #   - !Ref AWS::NoValue
+
         DefaultCacheBehavior:
           AllowedMethods:
             - GET
@@ -185,11 +233,12 @@ Resources:
                   LambdaFunctionARN: !Ref ABtestingOriginRequestFunctionArn
               - !Ref AWS::NoValue
 
-  DistributionOriginAccessIdentity:
-    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
-    Properties:
-      CloudFrontOriginAccessIdentityConfig:
-        Comment: !Sub "Identity for ${AWS::StackName}"
+  # # Uncomment if using S3 Origin mode            
+  # DistributionOriginAccessIdentity:
+  #   Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+  #   Properties:
+  #     CloudFrontOriginAccessIdentityConfig:
+  #       Comment: !Sub "Identity for ${AWS::StackName}"
 
 Outputs:
   DistributionID:
@@ -216,18 +265,6 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-ZoneName"
 
-  WebsiteMainBucket:
-    Description: Bucket for the website (main version)
-    Value: !GetAtt SiteMainBucket.DomainName
-    Export:
-      Name: !Sub "${AWS::StackName}-WebsiteMainBucket"    
-
-  WebsiteExperimentBucket:
-    Description: Bucket for the Experiment website (for A/B testing)
-    Value: !GetAtt SiteExperimentBucket.DomainName
-    Condition: SetUpABtesting
-    Export:
-      Name: !Sub "${AWS::StackName}-WebsiteExperimentBucket"    
 
   CloudFrontLogBucket:
     Description: Bucket for CloudFront logging
@@ -235,3 +272,48 @@ Outputs:
     Condition: EnableCloudFrontLogging
     Export:
       Name: !Sub "${AWS::StackName}-CloudFrontLogBucket"    
+      
+
+  # Name of the Main S3 bucket
+  WebsiteMainBucket:
+    Description: Name of the Main S3 bucket
+    Value: !Ref SiteMainBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-WebsiteMainBucket" 
+
+  # Endpoint used for S3 Origin
+  WebsiteMainBucketDomainName:
+    Description: S3 endpoint of the Main bucket
+    Value: !GetAtt SiteMainBucket.DomainName
+    Export:
+      Name: !Sub "${AWS::StackName}-WebsiteMainBucketDomainName" 
+
+  # Endpoint used for Custom Origin
+  WebsiteMainBucketStaticHostingEndpoint:
+    Description: Static Website Hosting endpoint of the Main S3 Bucket
+    Value: !Join [ '.', [ !Ref SiteMainBucket, !FindInMap [ RegionToS3Domain, !Ref "AWS::Region", domain ] ]]
+    Export:
+      Name: !Sub "${AWS::StackName}-WebsiteMainBucketStaticHostingEndopoint"
+
+
+  # Name of the Experiment S3 bucket
+  WebsiteExperimentBucket:
+    Description: Name of the Experiment S3 bucket
+    Value: !Ref SiteExperimentBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-WebsiteExperimentBucket" 
+      
+  # Endpoint used for S3 Origin
+  WebsiteExperimentBucketDomainName:
+    Description: S3 endpoint of the Experiment bucket
+    Value: !GetAtt SiteExperimentBucket.DomainName
+    Condition: SetUpABtesting
+    Export:
+      Name: !Sub "${AWS::StackName}-WebsiteExperimentBucketDomainName"
+
+  # Endpoint used for Custom Origin
+  WebsiteExperimentBucketStaticHostingEndpoint:
+    Description: Static Website Hosting endpoint of the Experiment S3 Bucket
+    Value: !Join [ '.', [ !Ref SiteExperimentBucket, !FindInMap [ RegionToS3Domain, !Ref "AWS::Region", domain ] ]]
+    Export:
+      Name: !Sub "${AWS::StackName}-WebsiteSiteExperimentBucketStaticHostingEndopoint"

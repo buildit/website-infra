@@ -5,8 +5,35 @@ const sourceMain = 'main';
 const sourceExperiment = 'experiment';
 const experimentTraffic = 0.5;
 
-const experimentBucketEndpoint = '{{ experimentBucketName }}.s3.amazonaws.com';
 const experimentBucketRegion = '{{ experimentBucketRegion }}';
+
+const experimentBucketEndpoint = '{{ experimentBucketEndpoint }}'; // S3 Origin endpoint
+const experimentBucketStaticWebsiteEndpoint = '{{ experimentBucketStaticEndpoint }}'; // Custom Origin endpoint
+
+/* S3 Origin */
+// const experimentOrigin = {
+//     s3: {
+//         authMethod: 'origin-access-identity',
+//         domainName: experimentBucketEndpoint,
+//        path: '',
+//         region: experimentBucketRegion    
+//     }
+// }
+
+/* Custom Origin */
+const experimentOrigin = {
+    custom: {
+        domainName: experimentBucketStaticWebsiteEndpoint,
+        port: 80,
+        protocol: 'http',
+        path: '',
+        readTimeout: 30,
+        keepaliveTimeout: 5,
+        sslProtocols: ['TLSv1', 'TLSv1.1'],
+        customHeaders: {}
+    }
+}
+const experimentHost = experimentBucketStaticWebsiteEndpoint;
 
 // Origin Request handler
 // 1) If the source cookie is not present, decide a source randomly and send back a redirect with Set-Cookie and Cache-Control=no-store
@@ -54,18 +81,11 @@ exports.handler = (event, context, callback) => {
     // If Source is Experiment, change Origin and Host header
     if ( source === sourceExperiment ) {
         console.log('Setting Origin to experiment bucket');
-        // Specify Origin
-        request.origin = {
-            s3: {
-                authMethod: 'origin-access-identity',
-                domainName: experimentBucketEndpoint,
-                path: '',
-                region: experimentBucketRegion    
-            }
-        };
+        // Change Origin
+        request.origin = experimentOrigin;
 
         // Also set Host header to prevent “The request signature we calculated does not match the signature you provided” error
-        headers['host'] = [{key: 'host', value: experimentBucketEndpoint }];
+        headers['host'] = [{key: 'host', value: experimentHost }];
     }
     // No need to change anything if Source was Main or undefined
     

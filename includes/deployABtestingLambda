@@ -7,7 +7,7 @@ npm install
 
 # Generate data file for generating lambda code
 echo "Generating Lambda function code"
-echo "{ \"experimentBucketName\" : \"${AB_EXPERIMENT_BUCKET}\", \"experimentBucketRegion\" : \"${RESOURCES_REGION}\" }" > $DIR/ab-testing/build/data.json
+echo "{ \"experimentBucketEndpoint\" : \"${AB_EXPERIMENT_BUCKET_ENDPOINT}\", \"experimentBucketRegion\" : \"${RESOURCES_REGION}\", \"experimentBucketStaticEndpoint\" : \"${AB_EXPERIMENT_BUCKET_STATIC_ENDPOINT}\" }" > $DIR/ab-testing/build/data.json
 npm run build
 
 echo "Deploy Lambda function"

@@ -2,7 +2,7 @@
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-source $DIR/scripts/functions
+source $DIR/includes/functions
 loadConfig $1
 
 CF_TEMPLATE=file://$DIR/cloudformation/website-dns-record.yml

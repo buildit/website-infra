@@ -1,7 +1,7 @@
 #!/bin/bash
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-source $DIR/scripts/functions
+source $DIR/includes/functions
 
 loadConfig $1
 
@@ -13,12 +13,20 @@ echo "Lambda Stack: $AB_TESTING_LAMBDA_STACK"
 # Infra stack must exist
 failIfStackDoesNotExist $STACK_NAME $RESOURCES_REGION
 
+# Static Website Hosting endpoint for the Experiment bucket
+# (Used for Custom origin only, but always available)
+AB_EXPERIMENT_BUCKET_STATIC_ENDPOINT=$( getStackOutput $STACK_NAME $RESOURCES_REGION 'WebsiteExperimentBucketStaticHostingEndpoint' )
+
+# S3 endpoing for the Experiment bucket
+# (Used for S3 Origin only, but always available)
+AB_EXPERIMENT_BUCKET_ENDPOINT=$( getStackOutput $STACK_NAME $RESOURCES_REGION 'WebsiteExperimentBucketDomainName' )
+
 # Check whether making A/B testing available
 if [ -z "$AB_EXPERIMENT_BUCKET" ]; then
   echo "No A/B testing abailable!"
   exit 1
 else
-  source $DIR/scripts/deployABtestingLambda
+  source $DIR/includes/deployABtestingLambda
 fi
 
 
@@ -29,7 +37,7 @@ failIfStackDoesNotExist $AB_TESTING_LAMBDA_STACK "us-east-1"
 # Retrieve OriginRequest Lambda function ARN from the Lambda stack
     # No way of directly referencing Outputs from this stack from the website-infra stack unless the website is deployed in us-east-1. 
     # CloudFormation does not support ImportValue from different Regions
-AB_TESTING_ORIGIN_REQUEST_FUNCTION=$( getStackExport $AB_TESTING_LAMBDA_STACK 'us-east-1' 'OriginRequestLambdaFunctionQualifiedArn' )
+AB_TESTING_ORIGIN_REQUEST_FUNCTION=$( getStackOutput $AB_TESTING_LAMBDA_STACK 'us-east-1' 'OriginRequestLambdaFunctionQualifiedArn' )
 echo "Origin Request: $AB_TESTING_ORIGIN_REQUEST_FUNCTION"
 
 
@@ -72,7 +80,7 @@ echo "Stack Status: $STACK_STATUS"
 
 # Invalidate Distribution
 echo "Invalidate CloudFront Distribution cache"
-DISTRIBUTION_ID=$( getStackExport $STACK_NAME $RESOURCES_REGION 'DistributionID' )
+DISTRIBUTION_ID=$( getStackOutput $STACK_NAME $RESOURCES_REGION 'DistributionID' )
 INVALIDATION_ID=$( createCloudfrontInvalidation $DISTRIBUTION_ID )
 waitForInvalidationCompleted $DISTRIBUTION_ID $INVALIDATION_ID
 
