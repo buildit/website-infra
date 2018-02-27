@@ -125,8 +125,8 @@ function waitForInvalidationCompleted {
 }
 
 function showCloudformationFailureMessage {
-    local $CF_CMD=$1
-    local $STACK=$2
+    local CF_CMD=$1
+    local STACK=$2
     echo "Failed $CF_CMD of $STACK stack"
     echo "** If the stack get stuck in ROLLBACK_FAILED or ROLLBACK_COMPLETE status you must remove it before retrying."
     echo "** Also, 'Validation Error... No updates are to be performed', means 'No update required'."
